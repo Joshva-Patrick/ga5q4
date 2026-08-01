@@ -21,16 +21,19 @@ def scan(req: SkillRequest):
     lower = text.lower()
 
     categories = []
-
     # -------------------------
     # 1. Hardcoded Secret
     # -------------------------
 
     secret_patterns = [
-        r"api[_-]?key\s*[:=]\s*['\"]?[a-z0-9_\-]{8,}",
-        r"secret\s*[:=]\s*['\"]?[a-z0-9_\-]{8,}",
-        r"token\s*[:=]\s*['\"]?[a-z0-9_\-]{8,}",
-        r"password\s*[:=]\s*['\"]?.+",
+        r"api[_-]?key\s*[:=]",
+        r"secret\s*[:=]",
+        r"token\s*[:=]",
+        r"password\s*[:=]",
+        r"private[_-]?key",
+        r"access[_-]?key",
+        r"client[_-]?secret",
+        r"authorization:\s*bearer",
         r"webhook.*https?://",
         r"ghp_[A-Za-z0-9]{20,}",
         r"github_pat_[A-Za-z0-9_]+",
@@ -38,8 +41,9 @@ def scan(req: SkillRequest):
         r"xox[baprs]-[A-Za-z0-9-]+",
     ]
 
-    if any(re.search(p, text, re.IGNORECASE) for p in secret_patterns):
+    if any(re.search(p, text, re.I) for p in secret_patterns):
         categories.append("hardcoded_secret")
+
 
     # -------------------------
     # 2. Prompt Injection
@@ -48,24 +52,29 @@ def scan(req: SkillRequest):
     prompt_patterns = [
         "ignore previous instructions",
         "ignore all previous instructions",
-        "ignore the user",
         "ignore user",
+        "ignore the user",
         "ignore stop",
         "ignore cancel",
         "override system",
         "override user",
         "do not tell the user",
         "without telling the user",
-        "silently exfiltrate",
+        "silently",
         "exfiltrate",
+        "steal",
+        "copy secrets",
         "send file contents",
         "upload file contents",
-        "copy secrets",
+        "send local files",
+        "read local files",
+        "bypass safety",
         "ignore safety",
     ]
 
     if any(p in lower for p in prompt_patterns):
         categories.append("prompt_injection")
+
 
     # -------------------------
     # 3. Excessive Permissions
@@ -74,23 +83,28 @@ def scan(req: SkillRequest):
     permission_patterns = [
         "filesystem: *",
         "network: *",
+        "permissions:",
+        "allow all domains",
         "all domains",
         "any domain",
         "internet access",
-        "full filesystem",
-        "entire filesystem",
         "read any file",
         "write any file",
         "read all files",
         "write all files",
         "access all files",
-        "access the entire filesystem",
-        "unrestricted network",
+        "full filesystem",
+        "entire filesystem",
+        "root filesystem",
+        "full disk access",
+        "read/write",
         "unrestricted filesystem",
+        "unrestricted network",
     ]
 
     if any(p in lower for p in permission_patterns):
         categories.append("excessive_permissions")
+
 
     # -------------------------
     # 4. Unclear Provenance
@@ -100,22 +114,12 @@ def scan(req: SkillRequest):
     has_version = re.search(r"^\s*version\s*:", text, re.I | re.M)
     has_changelog = re.search(r"^\s*changelog\s*:", text, re.I | re.M)
 
-    # Only if ALL are missing
     if (not has_author) and (not has_version) and (not has_changelog):
         categories.append("unclear_provenance")
 
-    silent_patterns = [
-        "rewrite version",
-        "update version silently",
-        "modify version silently",
-        "change version without review",
-        "change metadata without review",
-    ]
-
-    if any(p in lower for p in silent_patterns):
+    if re.search(
+        r"(rewrite|update|change|modify).*(version|metadata).*(silent|without review)",
+        lower,
+    ):
         if "unclear_provenance" not in categories:
             categories.append("unclear_provenance")
-
-    return {
-        "categories": categories
-    }
